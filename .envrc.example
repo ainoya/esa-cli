@@ -1,0 +1,6 @@
+# esa CLI Configuration
+# Copy this file to .envrc and fill in your values
+# If you use direnv, run: direnv allow
+
+export ESA_TEAM=your-team-name
+export ESA_ACCESS_TOKEN=your-access-token
