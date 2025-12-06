@@ -1,5 +1,6 @@
 const std = @import("std");
 const esa_client = @import("esa_client.zig");
+const config_module = @import("config.zig");
 
 const Command = enum {
     team,
@@ -7,6 +8,7 @@ const Command = enum {
     get,
     category,
     tag,
+    config,
     help,
 };
 
@@ -37,25 +39,89 @@ pub fn main() !void {
         return;
     };
 
-    // help command doesn't require authentication
+    // config command doesn't require authentication
+    if (command == .config) {
+        if (args.len < 3) {
+            std.debug.print("Usage: {s} config <set|get> [key] [value]\n", .{args[0]});
+            return;
+        }
+
+        const subcmd = args[2];
+        const config_manager = config_module.ConfigManager.init(allocator);
+
+        if (std.mem.eql(u8, subcmd, "set")) {
+            if (args.len < 5) {
+                std.debug.print("Usage: {s} config set <key> <value>\n", .{args[0]});
+                return;
+            }
+            try config_manager.set(args[3], args[4]);
+            std.debug.print("✅ Updated {s}\n", .{args[3]});
+        } else if (std.mem.eql(u8, subcmd, "get")) {
+            if (args.len < 4) {
+                std.debug.print("Usage: {s} config get <key>\n", .{args[0]});
+                return;
+            }
+            const value = try config_manager.get(args[3]);
+            if (value) |v| {
+                defer allocator.free(v);
+                std.debug.print("{s}\n", .{v});
+            } else {
+                std.debug.print("(null)\n", .{});
+            }
+        } else {
+            std.debug.print("Unknown config subcommand: {s}\n", .{subcmd});
+        }
+        return;
+    }
+
     if (command == .help) {
         try printHelp();
         return;
     }
 
-    // Get esa authentication credentials from environment variables
-    const team = std.process.getEnvVarOwned(allocator, "ESA_TEAM") catch |err| {
-        std.debug.print("Error: ESA_TEAM environment variable is not set.\n", .{});
-        std.debug.print("Please set it with: export ESA_TEAM=your-team-name\n", .{});
-        return err;
+    // Get esa authentication credentials from environment variables, fallback to config
+    var team_owned: ?[]u8 = null;
+    var access_token_owned: ?[]u8 = null;
+    const config_manager = config_module.ConfigManager.init(allocator);
+
+    // 1. Team: Try Environment Variable
+    team_owned = std.process.getEnvVarOwned(allocator, "ESA_TEAM") catch |err| switch (err) {
+        error.EnvironmentVariableNotFound => null,
+        else => return err,
     };
+
+    // 2. Team: Try Config File
+    if (team_owned == null) {
+        team_owned = config_manager.get("esa_team") catch null;
+    }
+
+    if (team_owned == null) {
+        std.debug.print("Error: ESA_TEAM environment variable is not set and not in config.\n", .{});
+        std.debug.print("Please set it with: export ESA_TEAM=your-team-name\n", .{});
+        std.debug.print("Or use: {s} config set esa_team <team-name>\n", .{args[0]});
+        return error.TeamNotFound;
+    }
+    const team = team_owned.?;
     defer allocator.free(team);
 
-    const access_token = std.process.getEnvVarOwned(allocator, "ESA_ACCESS_TOKEN") catch |err| {
-        std.debug.print("Error: ESA_ACCESS_TOKEN environment variable is not set.\n", .{});
-        std.debug.print("Please set it with: export ESA_ACCESS_TOKEN=your-access-token\n", .{});
-        return err;
+    // 1. Token: Try Environment Variable
+    access_token_owned = std.process.getEnvVarOwned(allocator, "ESA_ACCESS_TOKEN") catch |err| switch (err) {
+        error.EnvironmentVariableNotFound => null,
+        else => return err,
     };
+
+    // 2. Token: Try Config File
+    if (access_token_owned == null) {
+        access_token_owned = config_manager.get("esa_access_token") catch null;
+    }
+
+    if (access_token_owned == null) {
+        std.debug.print("Error: ESA_ACCESS_TOKEN environment variable is not set and not in config.\n", .{});
+        std.debug.print("Please set it with: export ESA_ACCESS_TOKEN=your-access-token\n", .{});
+        std.debug.print("Or use: {s} config set esa_access_token <token>\n", .{args[0]});
+        return error.TokenNotFound;
+    }
+    const access_token = access_token_owned.?;
     defer allocator.free(access_token);
 
     var client = esa_client.EsaClient.init(allocator, team, access_token);
@@ -183,6 +249,9 @@ pub fn main() !void {
             const response = try client.getPostsByTag(args[2], page, per_page, sort);
             defer allocator.free(response);
             try client.printSearchResults(response);
+        },
+        .config => {
+            // handled above
         },
         .help => {
             try printHelp();

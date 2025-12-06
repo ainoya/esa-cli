@@ -42,7 +42,29 @@ This makes the `esa-cli` command available system-wide (if `~/.local/bin` is in 
 
 ## Configuration
 
-You need to set environment variables:
+You can configure the CLI using the built-in configuration command (recommended) or environment variables.
+
+### Using Config Command
+
+Run the following commands to set your team and token persistently:
+
+```bash
+# Set Team Name
+esa-cli config set esa_team your-team-name
+
+# Set Access Token
+esa-cli config set esa_access_token your-access-token
+```
+
+To view current configuration:
+
+```bash
+esa-cli config get esa_team
+```
+
+### Environment Variables
+
+Environment variables take precedence over the configuration file.
 
 ```bash
 export ESA_TEAM=your-team-name
@@ -56,14 +78,7 @@ export ESA_ACCESS_TOKEN=your-access-token
 3. Select appropriate scopes (at least `read` permission is required)
 4. Generate and copy the token
 
-### Persistent configuration
 
-Add to `.bashrc`, `.zshrc`, or `.profile`:
-
-```bash
-export ESA_TEAM=your-team-name
-export ESA_ACCESS_TOKEN=your-access-token
-```
 
 Or, use `.envrc` (with direnv):
 
